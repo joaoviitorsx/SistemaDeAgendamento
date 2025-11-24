@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+.env
+.env.*
+*.sqlite3
+*.db
+*.log
+# VSCode
+.vscode/
+# OS
+.DS_Store
+Thumbs.db
+# Node
+node_modules/
+dist/
+build/
+# Frontend
+frontend/.next/
+frontend/.cache/
+frontend/.turbo/
+frontend/.env
+frontend/.env.*
+# Data
+*.json
+!frontend/package.json
+!backend/requirements.txt
+# Local data
+backend/app/__pycache__/
+backend/app/**/__pycache__/
+backend/app/data/
+# Test
+coverage/
+*.cover
+*.py,cover
+# Misc
+*.bak
+*.swp
+*.tmp

@@ -1,4 +1,4 @@
-# Sistema de Agendamento de Consultas Médicas
+# Sistema de Agendamento de Consultas
 
 Sistema completo de gerenciamento de consultas médicas desenvolvido como projeto acadêmico para demonstrar conceitos de **Sistemas Operacionais** em aplicação real.
 
@@ -579,37 +579,67 @@ import aiofiles
 import asyncio
 
 class FileManager:
-    def __init__(self, config: Settings):
-        self.config = config
-        self._locks: Dict[str, asyncio.Lock] = {}
-    
-    def _get_lock(self, file_path: str) -> asyncio.Lock:
-        """Retorna lock específico para cada arquivo (evita race conditions)"""
-        if file_path not in self._locks:
-            self._locks[file_path] = asyncio.Lock()
-        return self._locks[file_path]
-    
-    async def write_json_async(self, file_path: Path, data: Any):
-        """Escrita assíncrona com exclusão mútua"""
-        lock = self._get_lock(str(file_path))
-        
-        async with lock:  # Apenas uma thread pode escrever por vez
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            async with aiofiles.open(file_path, mode='w', encoding='utf-8') as f:
-                content = json.dumps(data, indent=2, ensure_ascii=False, default=str)
-                await f.write(content)
-            
-            logger.debug(f"Arquivo escrito: {file_path}")
-    
     async def read_json_async(self, file_path: Path) -> Any:
-        """Leitura assíncrona"""
+        """
+        Leitura assíncrona de arquivo JSON
+        
+        Conceito de SO:
+        - Non-blocking I/O: Não trava o event loop enquanto lê do disco
+        - Buffer: Sistema de buffers do SO otimiza leitura
+        - Page Cache: SO mantém arquivos recentes em cache
+        """
         if not file_path.exists():
             return []
         
-        async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
-            content = await f.read()
-            return json.loads(content)
+        lock = self._get_lock(str(file_path))
+        
+        async with lock:
+            try:
+                # Leitura assíncrona - libera CPU para outras tarefas
+                async with aiofiles.open(
+                    file_path,
+                    mode='r',
+                    encoding=self.config.file_encoding
+                ) as f:
+                    content = await f.read()  # Não bloqueia event loop
+                    return json.loads(content)
+            except Exception as e:
+                logger.error(f"Erro ao ler arquivo {file_path}: {e}")
+                raise
+    
+    async def write_json_async(self, file_path: Path, data: Any):
+        """
+        Escrita assíncrona de arquivo JSON
+        
+        Conceito de SO:
+        - Write-behind Caching: SO pode cachear escritas antes de flush para disco
+        - fsync: Força sincronização com disco físico
+        - Buffering: Dados passam pelo buffer do SO antes do disco
+        """
+        lock = self._get_lock(str(file_path))
+        
+        async with lock:
+            try:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Escrita assíncrona
+                async with aiofiles.open(
+                    file_path,
+                    mode='w',
+                    encoding=self.config.file_encoding
+                ) as f:
+                    content = json.dumps(
+                        data,
+                        indent=2,
+                        ensure_ascii=False,
+                        default=str
+                    )
+                    await f.write(content)  # Não bloqueia
+                
+                logger.debug(f"Arquivo escrito: {file_path}")
+            except Exception as e:
+                logger.error(f"Erro ao escrever arquivo {file_path}: {e}")
+                raise
 ```
 
 **Backup antes de sobrescrever:**
@@ -617,24 +647,37 @@ class FileManager:
 ```python
 # backend/app/infra/storage.py
 async def save(self, entity_type: str, data: List[Dict[str, Any]]):
+    """
+    Salva dados com backup antes de sobrescrever
+    
+    Conceito: Transação atômica - ou salva tudo ou nada
+    Similar a: BEGIN TRANSACTION / COMMIT em bancos de dados
+    """
     file_path = self.config.data_dir / f"{entity_type}.json"
     
-    # Backup automático antes de sobrescrever
+    # 1. Backup (rollback point)
     if file_path.exists():
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_path = self.config.backup_dir / f"{entity_type}_{timestamp}.json"
+        backup_path = self.config.backup_dir / f"{entity_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         shutil.copy2(file_path, backup_path)
-        logger.info(f"Backup criado: {backup_path}")
     
-    await self.file_manager.write_json_async(file_path, data)
+    try:
+        # 2. Escreve novos dados
+        await self.file_manager.write_json_async(file_path, data)
+        # 3. Commit implícito (sucesso)
+    except Exception as e:
+        # 4. Rollback (restaura backup)
+        logger.error(f"Erro ao salvar {entity_type}, backup disponível em {backup_path}")
+        raise
 ```
 
 **Conceitos de SO aplicados:**
 - **File System Hierarchy**: Estrutura hierárquica de diretórios
 - **Path Resolution**: Resolução de caminhos relativos e absolutos
-- **File Descriptors**: Gerenciamento de handles de arquivo
+- **File Descriptors**: Gerenciamento de handles/descriptors de arquivo
 - **Buffering**: Sistema de buffers do SO para I/O
-- **Permissions**: Criação de diretórios com permissões apropriadas
+- **Page Cache**: Arquivos recentes ficam em cache na memória
+- **Write-behind Caching**: Escritas são cacheadas antes de ir para disco
+- **fsync/flush**: Força sincronização do cache com disco físico
 - **Atomic Operations**: Backup antes de sobrescrever (transação segura)
 
 ---
@@ -1440,7 +1483,9 @@ backend/
 │   ├── repositories/           # Acesso a dados
 │   ├── services/               # Lógica de negócio
 │   ├── controllers/            # Rotas HTTP
-│   └── infra/                  # Infraestrutura (SO, logging, etc.)
+│   └── infra/                  # Config, Logger, FileManager, etc.
+├── requirements.txt
+└── .env.example
 ```
 
 **Fluxo de requisição:**
@@ -1785,3 +1830,60 @@ Para dúvidas sobre conceitos de SO implementados, consulte os comentários no c
 
 
 uvicorn app.main:app --reload
+
+## Requisitos
+- Python 3.11+
+- Node.js 18+
+- npm 9+
+
+## Instalação Backend (FastAPI)
+1. Acesse a pasta `backend`:
+   ```sh
+   cd backend
+   ```
+2. (Opcional) Crie um ambiente virtual:
+   ```sh
+   python -m venv .venv
+   .venv\Scripts\activate  # Windows
+   source .venv/bin/activate  # Linux/Mac
+   ```
+3. Instale as dependências:
+   ```sh
+   pip install -r requirements.txt
+   ```
+4. Inicie o backend:
+   ```sh
+   python app/main.py
+   ```
+   O backend estará disponível em http://localhost:8000
+
+## Instalação Frontend (React + Vite)
+1. Acesse a pasta `frontend`:
+   ```sh
+   cd frontend
+   ```
+2. Instale as dependências:
+   ```sh
+   npm install
+   ```
+3. Inicie o frontend:
+   ```sh
+   npm run dev
+   ```
+   O frontend estará disponível em http://localhost:5174
+
+## Usuário Inicial
+- **Admin:**
+  - Usuário: `admin`
+  - Senha: `admin123`
+
+## Fluxo de Uso
+1. Faça login como admin.
+2. Cadastre médicos e pacientes pelo painel admin.
+3. Compartilhe as credenciais geradas com os usuários.
+4. Médicos e pacientes podem acessar o sistema com suas credenciais.
+
+## Observações
+- Os dados são salvos em arquivos `.json` na pasta de dados local do sistema.
+- Para resetar o sistema, apague os arquivos de dados em `%LOCALAPPDATA%/SistemaAgendamento/data/` (Windows).
+- Para dúvidas, consulte o código ou abra uma issue.
