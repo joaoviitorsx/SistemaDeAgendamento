@@ -38,7 +38,6 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-600 via-primary-500 to-primary-700 flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background decorations */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
@@ -46,13 +45,16 @@ const LoginPage: React.FC = () => {
       
       <Card className="w-full max-w-md shadow-2xl relative z-10 border border-primary-200">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-600 to-primary-700 rounded-full mb-4 shadow-lg">
-            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-600 to-primary-700 rounded-full mb-4 shadow-lg">
+              <svg className="w-10 h-10" viewBox="0 0 48 48" role="img" aria-labelledby="medCrossTitle" xmlns="http://www.w3.org/2000/svg">
+              <title id="medCrossTitle">Cruz médica</title>
+              <rect x="20" y="6" width="8" height="36" rx="4" fill="#FFFFFF" />
+              <rect x="6" y="20" width="36" height="8" rx="4" fill="#FFFFFF" />
+              </svg>
+            </div>
+
           <h1 className="text-3xl font-heading font-bold text-neutral-900">
-            Sistema de Agendamento
+            Sistema de Agendamento Médico
           </h1>
           <p className="text-neutral-600 mt-2 font-medium">
             Faça login para continuar
@@ -63,7 +65,7 @@ const LoginPage: React.FC = () => {
           <Input
             type="text"
             label="Email ou CRM"
-            placeholder="ana.souza@example.com ou crm123"
+            placeholder="Login"
             value={identifier}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIdentifier(e.target.value)}
             required
@@ -77,7 +79,7 @@ const LoginPage: React.FC = () => {
           <Input
             type="password"
             label="Senha"
-            placeholder="••••••"
+            placeholder="Senha"
             value={senha}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSenha(e.target.value)}
             required
@@ -101,23 +103,6 @@ const LoginPage: React.FC = () => {
             Entrar
           </Button>
         </form>
-
-        <div className="mt-6 pt-6 border-t border-neutral-200">
-          <p className="text-xs text-neutral-600 text-center font-semibold mb-3">
-            Usuários de teste:
-          </p>
-          <div className="space-y-2 text-xs">
-            <div className="bg-primary-50 p-3 rounded-lg border border-primary-200 hover:border-primary-300 transition-colors">
-              <strong className="text-primary-700">Paciente:</strong> <span className="text-neutral-700">ana.souza@example.com / 123456</span>
-            </div>
-            <div className="bg-primary-50 p-3 rounded-lg border border-primary-200 hover:border-primary-300 transition-colors">
-              <strong className="text-primary-700">Médico:</strong> <span className="text-neutral-700">crm123 / 123456</span>
-            </div>
-            <div className="bg-primary-50 p-3 rounded-lg border border-primary-200 hover:border-primary-300 transition-colors">
-              <strong className="text-primary-700">Admin:</strong> <span className="text-neutral-700">admin.crm / admin123</span>
-            </div>
-          </div>
-        </div>
       </Card>
     </div>
   );
