@@ -104,27 +104,29 @@ const MinhasConsultasPage: React.FC = () => {
           </Button>
         </div>
 
-        {/* Lista de Consultas */}
         {loading ? (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
         ) : filteredConsultas.length === 0 ? (
-          <Card className="text-center py-12">
+          <Card className="relative text-center py-12">
+            <div className="absolute top-4 right-4">
+              <Button size="sm" variant="primary" className="flex items-center gap-2 shadow-md hover:shadow-lg transition cursor-pointer h-10"
+              onClick={() => window.location.href = '/paciente/agendar'}>
+              Agendar Nova Consulta
+              </Button>
+            </div>
             <CalendarIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               Nenhuma consulta encontrada
             </h3>
             <p className="text-gray-600 mb-6">
               {filter === 'todas' 
-                ? 'Você ainda não possui consultas agendadas'
-                : filter === 'agendadas'
-                ? 'Você não possui consultas agendadas no momento'
-                : 'Você ainda não possui histórico de consultas'}
+          ? 'Você ainda não possui consultas agendadas'
+          : filter === 'agendadas'
+          ? 'Você não possui consultas agendadas no momento'
+          : 'Você ainda não possui histórico de consultas'}
             </p>
-            <Button onClick={() => window.location.href = '/paciente/agendar'}>
-              Agendar Nova Consulta
-            </Button>
           </Card>
         ) : (
           <div className="space-y-4">
