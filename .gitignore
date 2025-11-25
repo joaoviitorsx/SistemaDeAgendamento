@@ -33,8 +33,7 @@ frontend/.env.*
 # Local data
 backend/app/__pycache__/
 backend/app/**/__pycache__/
-backend/app/data/
-backend/banco/
+backend/venv/
 # Test
 coverage/
 *.cover
