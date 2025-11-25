@@ -29,7 +29,7 @@ from app.controllers import (
 async def lifespan(app: FastAPI):
     """
     Gerencia o ciclo de vida da aplicação
-    - Startup: inicializa logging, diretórios, cache
+    - Startup: inicializa logging, diretórios, cache, banco de dados
     - Shutdown: limpa recursos, fecha arquivos
     """
     config = get_config()
@@ -44,6 +44,12 @@ async def lifespan(app: FastAPI):
     file_manager = FileManager()
     file_manager.ensure_directories()
     logger.info("Estrutura de diretórios criada/verificada")
+    
+    # Inicializa banco de dados SQLite
+    from app.infra.database import init_database, create_tables
+    init_database()
+    create_tables()
+    logger.info("Banco de dados SQLite inicializado")
     
     # Cria usuário admin inicial se não existir
     from app.services.auth_service import AuthService

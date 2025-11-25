@@ -1,43 +1,80 @@
 """
-Repository de Pacientes
+Repository de Pacientes - SQLAlchemy
 """
 
 from typing import List, Optional
-from app.models.paciente import Paciente
-from app.repositories.base_repository import BaseRepository
+from app.models.db_models import Paciente
+from app.infra.database import get_db_session
 
 
-class PacienteRepository(BaseRepository[Paciente]):
-    """Repository para operações com Pacientes"""
+class PacienteRepository:
+    """Repository para operações com Pacientes usando SQLAlchemy"""
     
-    def __init__(self):
-        super().__init__("pacientes")
+    async def create(self, paciente: Paciente) -> Paciente:
+        """Cria novo paciente"""
+        with get_db_session() as db:
+            db.add(paciente)
+            db.flush()
+            db.refresh(paciente)
+            db.expunge(paciente)
+            return paciente
     
-    def _to_entity(self, data: dict) -> Paciente:
-        """Converte dicionário para Paciente"""
-        return Paciente.from_dict(data)
-    
-    def _to_dict(self, entity: Paciente) -> dict:
-        """Converte Paciente para dicionário"""
-        return entity.to_dict()
-    
-    def _get_id(self, entity: Paciente) -> str:
-        """Retorna o ID do paciente"""
-        return entity.id
-    
-    def _set_id(self, entity: Paciente, entity_id: str):
-        """Define o ID do paciente"""
-        entity.id = entity_id
+    async def find_by_id(self, paciente_id: str) -> Optional[Paciente]:
+        """Busca paciente por ID"""
+        with get_db_session() as db:
+            paciente = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+            if paciente:
+                db.expunge(paciente)
+            return paciente
     
     async def find_by_cpf(self, cpf: str) -> Optional[Paciente]:
         """Busca paciente por CPF"""
-        await self._load_cache()
-        for paciente in self._cache:
-            if paciente.cpf == cpf:
-                return paciente
-        return None
+        with get_db_session() as db:
+            paciente = db.query(Paciente).filter(Paciente.cpf == cpf).first()
+            if paciente:
+                db.expunge(paciente)
+            return paciente
     
     async def find_ativos(self) -> List[Paciente]:
         """Retorna apenas pacientes ativos"""
-        await self._load_cache()
-        return [p for p in self._cache if p.ativo]
+        with get_db_session() as db:
+            pacientes = db.query(Paciente).filter(Paciente.ativo == True).all()
+            for p in pacientes:
+                db.expunge(p)
+            return pacientes
+    
+    async def find_all(self) -> List[Paciente]:
+        """Lista todos os pacientes"""
+        with get_db_session() as db:
+            pacientes = db.query(Paciente).all()
+            for p in pacientes:
+                db.expunge(p)
+            return pacientes
+    
+    async def update(self, paciente_id: str, paciente: Paciente) -> Paciente:
+        """Atualiza paciente"""
+        with get_db_session() as db:
+            db_paciente = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+            if db_paciente:
+                db_paciente.nome = paciente.nome
+                db_paciente.cpf = paciente.cpf
+                db_paciente.data_nascimento = paciente.data_nascimento
+                db_paciente.telefone = paciente.telefone
+                db_paciente.email = paciente.email
+                db_paciente.ativo = paciente.ativo
+                db_paciente.endereco = paciente.endereco
+                db.flush()
+                db.refresh(db_paciente)
+                db.expunge(db_paciente)
+                return db_paciente
+            return None
+    
+    async def delete(self, paciente_id: str) -> bool:
+        """Remove paciente"""
+        with get_db_session() as db:
+            db_paciente = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+            if db_paciente:
+                db.delete(db_paciente)
+                return True
+            return False
+

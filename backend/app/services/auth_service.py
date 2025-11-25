@@ -7,7 +7,7 @@ from typing import Optional
 from uuid import uuid4
 from fastapi import HTTPException
 
-from app.models.usuario import Usuario, TipoUsuario
+from app.models.db_models import Usuario, TipoUsuario
 from app.repositories.usuario_repository import UsuarioRepository
 from app.repositories.medico_repository import MedicoRepository
 from app.repositories.paciente_repository import PacienteRepository

@@ -34,7 +34,7 @@ Senha Temporária: ${senha}
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="✅ Cadastro Realizado com Sucesso!"
+      title="Cadastro Realizado com Sucesso!"
     >
       <div className="space-y-6">
         <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-r-lg">

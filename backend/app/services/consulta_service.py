@@ -11,7 +11,7 @@ from uuid import uuid4
 from datetime import datetime, timedelta, date
 from fastapi import HTTPException
 
-from app.models.consulta import Consulta, StatusConsulta
+from app.models.db_models import Consulta, StatusConsulta
 from app.repositories.consulta_repository import ConsultaRepository
 from app.repositories.paciente_repository import PacienteRepository
 from app.repositories.medico_repository import MedicoRepository

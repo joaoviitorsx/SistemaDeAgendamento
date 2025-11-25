@@ -5,9 +5,9 @@ Service de Pacientes - lógica de negócio
 from typing import List, Optional
 from uuid import uuid4
 from fastapi import HTTPException
+import json
 
-from app.models.paciente import Paciente, Endereco
-from app.models.usuario import Usuario, TipoUsuario
+from app.models.db_models import Paciente, Usuario, TipoUsuario
 from app.repositories.paciente_repository import PacienteRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.paciente_schema import PacienteCreate, PacienteUpdate
@@ -57,14 +57,14 @@ class PacienteService:
             raise HTTPException(status_code=400, detail="CPF já cadastrado")
         
         # Cria o paciente
-        endereco_obj = Endereco(
-            rua=dados.endereco.rua,
-            numero=dados.endereco.numero,
-            bairro=dados.endereco.bairro,
-            cidade=dados.endereco.cidade,
-            estado=dados.endereco.estado,
-            cep=dados.endereco.cep
-        )
+        endereco_json = json.dumps({
+            "rua": dados.endereco.rua,
+            "numero": dados.endereco.numero,
+            "bairro": dados.endereco.bairro,
+            "cidade": dados.endereco.cidade,
+            "estado": dados.endereco.estado,
+            "cep": dados.endereco.cep
+        })
         
         paciente = Paciente(
             id=str(uuid4()),
@@ -73,7 +73,7 @@ class PacienteService:
             data_nascimento=dados.data_nascimento,
             telefone=dados.telefone,
             email=dados.email,
-            endereco=endereco_obj,
+            endereco=endereco_json,
             ativo=True
         )
         
@@ -116,14 +116,14 @@ class PacienteService:
         if dados.email is not None:
             paciente.email = dados.email
         if dados.endereco is not None:
-            paciente.endereco = Endereco(
-                rua=dados.endereco.rua,
-                numero=dados.endereco.numero,
-                bairro=dados.endereco.bairro,
-                cidade=dados.endereco.cidade,
-                estado=dados.endereco.estado,
-                cep=dados.endereco.cep
-            )
+            paciente.endereco = json.dumps({
+                "rua": dados.endereco.rua,
+                "numero": dados.endereco.numero,
+                "bairro": dados.endereco.bairro,
+                "cidade": dados.endereco.cidade,
+                "estado": dados.endereco.estado,
+                "cep": dados.endereco.cep
+            })
         if dados.ativo is not None:
             paciente.ativo = dados.ativo
         
