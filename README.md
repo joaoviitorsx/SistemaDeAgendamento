@@ -5,6 +5,15 @@ Sistema completo de gerenciamento de consultas médicas desenvolvido como projet
 > 🎓 **Trabalho Acadêmico** - Disciplina de Sistemas Operacionais  
 > 📊 **Avaliação**: 40% Funcionalidade + 40% Conceitos de SO + 10% Qualidade + 10% Relatório
 
+## 🚨 ATUALIZAÇÃO IMPORTANTE
+
+**Agora o sistema utiliza banco de dados SQLite para persistência dos dados, com SQLAlchemy ORM.**
+- O arquivo do banco fica em: `backend/banco/database.db`
+- Não é mais utilizado armazenamento em arquivos JSON.
+- O sistema está pronto para uso local, sem necessidade de instalar SGBD externo.
+
+---
+
 ## 📋 Sumário
 
 - [Objetivo do Projeto](#objetivo-do-projeto)
@@ -61,28 +70,29 @@ async def _validar_conflito(self, medico_id: str, data_hora: datetime, duracao_m
             raise HTTPException(status_code=409, detail="Médico já possui consulta agendada")
 ```
 
-#### ✅ Persistência em arquivos locais
-- Dados salvos em **arquivos JSON** com encoding UTF-8
-- **Backup automático** antes de cada escrita (transações seguras)
-- Estrutura de diretórios organizada por entidade
+#### ✅ Persistência em banco de dados SQLite
+- Dados salvos em **banco SQLite** local (`backend/banco/database.db`)
+- **ORM SQLAlchemy** para manipulação dos dados
+- **Backup automático** pode ser implementado copiando o arquivo `.db`
+- Estrutura de tabelas organizada por entidade
 
 **Evidência no código:**
 ```python
-# backend/app/infra/storage.py - Persistência com backup
-async def save(self, entity_type: str, data: List[Dict[str, Any]]):
-    file_path = self.config.data_dir / f"{entity_type}.json"
-    
-    # Backup antes de sobrescrever
-    if file_path.exists():
-        backup_path = self.config.backup_dir / f"{entity_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        shutil.copy2(file_path, backup_path)
-    
-    await self.file_manager.write_json_async(file_path, data)
+# backend/app/infra/database.py - Configuração do SQLite
+DATABASE_URL = "sqlite:///backend/banco/database.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+# backend/app/models/db_models.py - Modelos ORM
+class Paciente(Base):
+    __tablename__ = "pacientes"
+    id = Column(String, primary_key=True, index=True)
+    nome = Column(String, nullable=False)
+    # ...
 ```
 
-**Localização dos arquivos:**
-- **Windows**: `%LOCALAPPDATA%\SistemaAgendamento\data\`
-- **Linux/macOS**: `~/.local/share/SistemaAgendamento/data/`
+**Localização do banco:**
+- `backend/banco/database.db` (diretório do projeto)
 
 #### ✅ Geração de relatórios
 - Suporte a **3 formatos**: PDF, CSV e Excel
@@ -421,11 +431,12 @@ Cada conceito de SO foi explicado em detalhes com:
 
 #### ✅ Análise de decisões técnicas
 
-**Por que arquivos JSON ao invés de SQLite?**
-- ✅ Demonstra melhor conceitos de **Sistema de Arquivos**
-- ✅ Permite implementar **I/O assíncrono** explicitamente
-- ✅ Facilita **backup** e **versionamento** de dados
-- ✅ Didático para entender **file locks** e **race conditions**
+**Por que SQLite ao invés de arquivos JSON?**
+- ✅ Permite consultas complexas e filtragem eficiente
+- ✅ Garante integridade transacional dos dados
+- ✅ Facilita uso de ORM (SQLAlchemy) e migração futura para outros bancos
+- ✅ Mais robusto para múltiplos acessos concorrentes
+- ✅ Backup simples: basta copiar o arquivo `.db`
 
 **Por que ThreadPoolExecutor ao invés de multiprocessing?**
 - ✅ Operações são **I/O bound** (escrita de arquivos, geração de PDFs)
@@ -510,7 +521,7 @@ async def gerar_relatorio(self, request: RelatorioRequest) -> str:
 - ✅ Múltiplos usuários podem solicitar relatórios simultaneamente
 - ✅ Operações de I/O (escrita de arquivo) não bloqueiam requisições HTTP
 
-**Conceitos de SO aplicados:**
+**Conceito de SO aplicado:** 
 - **Multiprogramação**: Múltiplas threads executando concorrentemente
 - **Escalonamento**: Sistema operacional gerencia tempo de CPU entre threads
 - **Context Switching**: Troca de contexto entre threads gerenciada pelo SO
@@ -522,152 +533,101 @@ async def gerar_relatorio(self, request: RelatorioRequest) -> str:
 
 **Implementação:**
 
-Os dados são persistidos em **arquivos JSON** organizados hierarquicamente. O sistema detecta automaticamente o SO e cria diretórios nos locais apropriados.
+Os dados são persistidos em um **banco de dados SQLite** localizado em `backend/banco/database.db`. O sistema utiliza SQLAlchemy como ORM para mapear as entidades e realizar as operações de CRUD.
 
-**Estrutura de diretórios:**
-
-```
-Windows: C:\Users\<usuario>\AppData\Local\SistemaAgendamento\
-Linux:   /home/<usuario>/.local/share/SistemaAgendamento/
-macOS:   /Users/<usuario>/.local/share/SistemaAgendamento/
-
-├── data/              # Dados principais
-│   ├── pacientes.json
-│   ├── medicos.json
-│   └── consultas.json
-├── backups/           # Backups automáticos
-│   ├── pacientes_20251123_140530.json
-│   └── medicos_20251123_141200.json
-├── reports/           # Relatórios gerados
-│   ├── relatorio_geral_20251123.pdf
-│   └── relatorio_medico_20251123.csv
-├── temp/              # Arquivos temporários
-└── logs/              # Logs do sistema
-    └── app.log
-```
-
-**Detecção de SO e paths:**
+**Arquivo:** `backend/app/infra/database.py`
 
 ```python
-# backend/app/infra/config.py
-class OSInfo:
-    @classmethod
-    def detect(cls):
-        system = platform.system()
-        
-        if system == "Windows":
-            base = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        else:  # Linux, Darwin (macOS)
-            base = Path.home() / ".local" / "share"
-        
-        app_dir = base / "SistemaAgendamento"
-        
-        return {
-            "data_dir": app_dir / "data",
-            "backup_dir": app_dir / "backups",
-            "temp_dir": app_dir / "temp",
-            "reports_dir": app_dir / "reports",
-            "logs_dir": app_dir / "logs"
-        }
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URL = "sqlite:///backend/banco/database.db"
+
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}  # Necessário para SQLite
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
 ```
 
-**Operações de arquivo com I/O assíncrono:**
+**Modelos ORM:**
 
 ```python
-# backend/app/infra/file_manager.py
-import aiofiles
-import asyncio
+# backend/app/models/db_models.py
+from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy.orm import relationship
+from .database import Base
 
-class FileManager:
-    async def read_json_async(self, file_path: Path) -> Any:
-        """
-        Leitura assíncrona de arquivo JSON
-        
-        Conceito de SO:
-        - Non-blocking I/O: Não trava o event loop enquanto lê do disco
-        - Buffer: Sistema de buffers do SO otimiza leitura
-        - Page Cache: SO mantém arquivos recentes em cache
-        """
-        if not file_path.exists():
-            return []
-        
-        lock = self._get_lock(str(file_path))
-        
-        async with lock:
-            try:
-                # Leitura assíncrona - libera CPU para outras tarefas
-                async with aiofiles.open(
-                    file_path,
-                    mode='r',
-                    encoding=self.config.file_encoding
-                ) as f:
-                    content = await f.read()  # Não bloqueia event loop
-                    return json.loads(content)
-            except Exception as e:
-                logger.error(f"Erro ao ler arquivo {file_path}: {e}")
-                raise
+class Paciente(Base):
+    __tablename__ = "pacientes"
     
-    async def write_json_async(self, file_path: Path, data: Any):
-        """
-        Escrita assíncrona de arquivo JSON
-        
-        Conceito de SO:
-        - Write-behind Caching: SO pode cachear escritas antes de flush para disco
-        - fsync: Força sincronização com disco físico
-        - Buffering: Dados passam pelo buffer do SO antes do disco
-        """
-        lock = self._get_lock(str(file_path))
-        
-        async with lock:
-            try:
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                # Escrita assíncrona
-                async with aiofiles.open(
-                    file_path,
-                    mode='w',
-                    encoding=self.config.file_encoding
-                ) as f:
-                    content = json.dumps(
-                        data,
-                        indent=2,
-                        ensure_ascii=False,
-                        default=str
-                    )
-                    await f.write(content)  # Não bloqueia
-                
-                logger.debug(f"Arquivo escrito: {file_path}")
-            except Exception as e:
-                logger.error(f"Erro ao escrever arquivo {file_path}: {e}")
-                raise
+    id = Column(String, primary_key=True, index=True)
+    nome = Column(String, nullable=False)
+    cpf = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=False)
+    
+    consultas = relationship("Consulta", back_populates="paciente")
+
+class Medico(Base):
+    __tablename__ = "medicos"
+    
+    id = Column(String, primary_key=True, index=True)
+    nome = Column(String, nullable=False)
+    crm = Column(String, unique=True, nullable=False)
+    especialidade = Column(String, nullable=False)
+    
+    consultas = relationship("Consulta", back_populates="medico")
+
+class Consulta(Base):
+    __tablename__ = "consultas"
+    
+    id = Column(String, primary_key=True, index=True)
+    paciente_id = Column(String, ForeignKey("pacientes.id"), nullable=False)
+    medico_id = Column(String, ForeignKey("medicos.id"), nullable=False)
+    data_hora = Column(String, nullable=False)
+    duracao_minutos = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default="agendada")
+    
+    paciente = relationship("Paciente", back_populates="consultas")
+    medico = relationship("Medico", back_populates="consultas")
 ```
 
-**Backup antes de sobrescrever:**
+**Operações de banco de dados com SQLAlchemy:**
 
 ```python
-# backend/app/infra/storage.py
-async def save(self, entity_type: str, data: List[Dict[str, Any]]):
-    """
-    Salva dados com backup antes de sobrescrever
+# backend/app/repositories/paciente_repository.py
+from sqlalchemy.orm import Session
+from ..models.db_models import Paciente
+from ..schemas.paciente_schema import PacienteCreate, PacienteUpdate
+
+class PacienteRepository:
+    def __init__(self, db: Session):
+        self.db = db
     
-    Conceito: Transação atômica - ou salva tudo ou nada
-    Similar a: BEGIN TRANSACTION / COMMIT em bancos de dados
-    """
-    file_path = self.config.data_dir / f"{entity_type}.json"
+    def criar(self, paciente: PacienteCreate):
+        db_paciente = Paciente(**paciente.dict())
+        self.db.add(db_paciente)
+        self.db.commit()
+        self.db.refresh(db_paciente)
+        return db_paciente
     
-    # 1. Backup (rollback point)
-    if file_path.exists():
-        backup_path = self.config.backup_dir / f"{entity_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        shutil.copy2(file_path, backup_path)
+    def buscar_por_id(self, paciente_id: str):
+        return self.db.query(Paciente).filter(Paciente.id == paciente_id).first()
     
-    try:
-        # 2. Escreve novos dados
-        await self.file_manager.write_json_async(file_path, data)
-        # 3. Commit implícito (sucesso)
-    except Exception as e:
-        # 4. Rollback (restaura backup)
-        logger.error(f"Erro ao salvar {entity_type}, backup disponível em {backup_path}")
-        raise
+    def buscar_por_cpf(self, cpf: str):
+        return self.db.query(Paciente).filter(Paciente.cpf == cpf).first()
+    
+    def atualizar(self, paciente_id: str, dados: PacienteUpdate):
+        self.db.query(Paciente).filter(Paciente.id == paciente_id).update(dados.dict())
+        self.db.commit()
+    
+    def deletar(self, paciente_id: str):
+        self.db.query(Paciente).filter(Paciente.id == paciente_id).delete()
+        self.db.commit()
 ```
 
 **Conceitos de SO aplicados:**
@@ -1208,7 +1168,7 @@ with open('arquivo.json', 'r') as f:
 # BOM: Libera CPU durante I/O
 async with aiofiles.open('arquivo.json', 'r') as f:
     data = await f.read()  # CPU processa outras requisições enquanto aguarda disco
-    # Servidor continua respondendo outras requisições
+    # Servidor continua responsondendo outras requisições
 ```
 
 **3. Buffer e Page Cache do SO**
@@ -1470,7 +1430,7 @@ os_info = OSInfo.detect()
 
 ## 🏗️ Arquitetura
 
-### Backend (Python + FastAPI)
+### Backend (Python + FastAPI + SQLAlchemy + SQLite)
 
 Segue o padrão **MVC** adaptado:
 
@@ -1478,99 +1438,30 @@ Segue o padrão **MVC** adaptado:
 backend/
 ├── app/
 │   ├── main.py                 # Entry point
-│   ├── models/                 # Entidades de domínio
+│   ├── models/                 # Entidades de domínio (ORM)
 │   ├── schemas/                # DTOs Pydantic
-│   ├── repositories/           # Acesso a dados
+│   ├── repositories/           # Acesso a dados (SQLAlchemy)
 │   ├── services/               # Lógica de negócio
 │   ├── controllers/            # Rotas HTTP
-│   └── infra/                  # Config, Logger, FileManager, etc.
+│   └── infra/                  # Config, Logger, Database, etc.
+├── banco/                      # Banco de dados SQLite
+│   └── database.db
 ├── requirements.txt
 └── .env.example
 ```
 
 **Fluxo de requisição:**
 ```
-HTTP Request → Controller → Service → Repository → Storage (JSON)
+HTTP Request → Controller → Service → Repository → Database (SQLite)
                    ↓
             Validação (Pydantic)
             Logging (Logger)
             Cache (CacheService)
 ```
 
-### Frontend (React + TypeScript + Vite)
-
-Estrutura modular:
-
-```
-frontend/
-├── src/
-│   ├── api/                    # Clients HTTP
-│   ├── types/                  # Interfaces TypeScript
-│   ├── pages/                  # Páginas principais
-│   ├── components/             # Componentes reutilizáveis
-│   ├── hooks/                  # Custom hooks
-│   └── styles/                 # Estilos globais
-```
-
----
-
-## 🛠️ Tecnologias Utilizadas
-
-### Backend
-- **Python 3.10+**
-- **FastAPI** - Framework web assíncrono
-- **Pydantic** - Validação de dados
-- **aiofiles** - I/O assíncrono de arquivos
-- **ReportLab** - Geração de PDFs
-- **OpenPyXL** - Geração de Excel
-
-### Frontend
-- **React 18**
-- **TypeScript**
-- **Vite** - Build tool
-- **Axios** - Cliente HTTP
-- **React Router** - Roteamento
-
----
-
-## 📁 Estrutura do Projeto
-
-```
-SistemaAgendamento/
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py
-│   │   ├── models/             # Paciente, Médico, Consulta
-│   │   ├── schemas/            # DTOs de entrada/saída
-│   │   ├── repositories/       # Acesso a dados
-│   │   ├── services/           # Lógica de negócio
-│   │   ├── controllers/        # Rotas da API
-│   │   └── infra/              # Config, Logger, FileManager, etc.
-│   ├── requirements.txt
-│   └── .env.example
-├── frontend/
-│   ├── src/
-│   │   ├── api/
-│   │   ├── types/
-│   │   ├── pages/
-│   │   ├── components/
-│   │   └── styles/
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-└── README.md
-```
-
 ---
 
 ## 🚀 Como Executar
-
-### Pré-requisitos
-
-- **Python 3.10+**
-- **Node.js 18+**
-- **npm ou yarn**
 
 ### 1. Backend
 
@@ -1590,30 +1481,22 @@ python -m venv venv
 # Instalar dependências
 pip install -r requirements.txt
 
-# Copiar arquivo de configuração
-cp .env.example .env
-
-# Iniciar o servidor
-python -m uvicorn app.main:app --reload
+# Iniciar o servidor (o banco será criado automaticamente)
+python app/main.py
 ```
+
+O banco de dados será criado em: `backend/banco/database.db`
 
 Servidor rodando em: **http://localhost:8000**
-Documentação Swagger: **http://localhost:8000/docs**
 
-### 2. Frontend
+---
 
-```powershell
-# Navegar para o diretório do frontend
-cd frontend
-
-# Instalar dependências
-npm install
-
-# Iniciar servidor de desenvolvimento
-npm run dev
-```
-
-Frontend rodando em: **http://localhost:5173**
+## Observações
+- Os dados agora são salvos em um banco **SQLite** local (`backend/banco/database.db`).
+- Para resetar o sistema, basta apagar o arquivo do banco de dados.
+- Não é mais necessário manipular arquivos JSON manualmente.
+- Para backup, copie o arquivo `.db` para outro local.
+- Para dúvidas, consulte o código ou abra uma issue.
 
 ---
 
@@ -1884,6 +1767,8 @@ uvicorn app.main:app --reload
 4. Médicos e pacientes podem acessar o sistema com suas credenciais.
 
 ## Observações
-- Os dados são salvos em arquivos `.json` na pasta de dados local do sistema.
-- Para resetar o sistema, apague os arquivos de dados em `%LOCALAPPDATA%/SistemaAgendamento/data/` (Windows).
+- Os dados agora são salvos em um banco **SQLite** local (`backend/banco/database.db`).
+- Para resetar o sistema, basta apagar o arquivo do banco de dados.
+- Não é mais necessário manipular arquivos JSON manualmente.
+- Para backup, copie o arquivo `.db` para outro local.
 - Para dúvidas, consulte o código ou abra uma issue.
