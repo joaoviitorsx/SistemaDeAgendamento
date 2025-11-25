@@ -7,10 +7,12 @@ Sistema completo de gerenciamento de consultas médicas desenvolvido como projet
 
 ## 🚨 ATUALIZAÇÃO IMPORTANTE
 
-**Agora o sistema utiliza banco de dados SQLite para persistência dos dados, com SQLAlchemy ORM.**
-- O arquivo do banco fica em: `backend/banco/database.db`
-- Não é mais utilizado armazenamento em arquivos JSON.
-- O sistema está pronto para uso local, sem necessidade de instalar SGBD externo.
+**O sistema utiliza banco de dados SQLite para persistência dos dados, com SQLAlchemy ORM.**
+- 📁 Banco de dados: `backend/banco/database.db`
+- 🔄 ORM: SQLAlchemy 2.0.23 para mapeamento objeto-relacional
+- 🔐 Autenticação: Sistema completo com usuários (Admin, Médico, Paciente)
+- ✅ Não requer instalação de SGBD externo
+- 🚀 Sessões gerenciadas com `db.expunge()` para evitar DetachedInstanceError
 
 ---
 
@@ -38,9 +40,10 @@ Sistema completo de gerenciamento de consultas médicas desenvolvido como projet
 Este sistema foi desenvolvido para demonstrar a aplicação prática de conceitos fundamentais de Sistemas Operacionais em um software real. O projeto atende aos requisitos acadêmicos da disciplina, implementando:
 
 - ✅ Sistema completo de agendamento de consultas médicas (CRUD)
-- ✅ Persistência de dados em arquivos JSON
+- ✅ Persistência de dados em banco SQLite com SQLAlchemy ORM
+- ✅ Sistema de autenticação com 3 perfis (Admin, Médico, Paciente)
 - ✅ Geração de relatórios (PDF, CSV, Excel)
-- ✅ Interface web responsiva e utilizável
+- ✅ Interface web responsiva com React + TypeScript
 - ✅ Demonstração clara de conceitos de SO: processos/threads, sistema de arquivos, concorrência, I/O, gerenciamento de memória e chamadas de sistema
 
 ---
@@ -431,12 +434,21 @@ Cada conceito de SO foi explicado em detalhes com:
 
 #### ✅ Análise de decisões técnicas
 
-**Por que SQLite ao invés de arquivos JSON?**
-- ✅ Permite consultas complexas e filtragem eficiente
-- ✅ Garante integridade transacional dos dados
-- ✅ Facilita uso de ORM (SQLAlchemy) e migração futura para outros bancos
-- ✅ Mais robusto para múltiplos acessos concorrentes
-- ✅ Backup simples: basta copiar o arquivo `.db`
+**Por que SQLite com SQLAlchemy ao invés de arquivos JSON?**
+- ✅ **Consultas complexas**: Filtros, joins e agregações usando SQL
+- ✅ **Integridade transacional**: ACID garantido pelo SQLite
+- ✅ **ORM SQLAlchemy**: Mapeamento objeto-relacional elegante e type-safe
+- ✅ **Concorrência**: Melhor controle de locks e transações simultâneas
+- ✅ **Migração futura**: Fácil trocar para PostgreSQL/MySQL mudando apenas a connection string
+- ✅ **Backup simples**: Copiar arquivo `.db` ou usar `sqlite3 .dump`
+- ✅ **Relationships**: Foreign keys e relacionamentos automáticos
+- ✅ **Performance**: Índices automáticos em primary keys e unique constraints
+
+**Por que `db.expunge()` nos repositories?**
+- ✅ **DetachedInstanceError**: Evita erro ao acessar objetos fora da sessão
+- ✅ **Session Lifecycle**: Context manager fecha sessão após uso
+- ✅ **Stateless API**: Objetos retornados não dependem de sessão ativa
+- ✅ **Memory Management**: Sessões são fechadas liberando recursos
 
 **Por que ThreadPoolExecutor ao invés de multiprocessing?**
 - ✅ Operações são **I/O bound** (escrita de arquivos, geração de PDFs)
@@ -533,112 +545,284 @@ async def gerar_relatorio(self, request: RelatorioRequest) -> str:
 
 **Implementação:**
 
-Os dados são persistidos em um **banco de dados SQLite** localizado em `backend/banco/database.db`. O sistema utiliza SQLAlchemy como ORM para mapear as entidades e realizar as operações de CRUD.
+Os dados são persistidos em um **banco de dados SQLite** localizado em `backend/banco/database.db`. O sistema utiliza **SQLAlchemy 2.0.23** como ORM para mapear as entidades e realizar as operações de CRUD com gerenciamento seguro de sessões.
 
 **Arquivo:** `backend/app/infra/database.py`
 
 ```python
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
+from contextlib import contextmanager
+import os
+
+# Garante que o diretório existe
+db_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "banco")
+os.makedirs(db_dir, exist_ok=True)
 
 DATABASE_URL = "sqlite:///backend/banco/database.db"
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}  # Necessário para SQLite
+    connect_args={"check_same_thread": False},  # Necessário para SQLite com FastAPI
+    echo=False  # True para debug SQL
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+@contextmanager
+def get_db_session():
+    """Context manager para sessões do banco de dados"""
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+def init_database():
+    """Inicializa o banco de dados e cria o usuário admin padrão"""
+    from app.models.db_models import Usuario, TipoUsuario
+    
+    Base.metadata.create_all(bind=engine)
+    
+    # Cria admin padrão se não existir
+    with get_db_session() as db:
+        admin = db.query(Usuario).filter(Usuario.username == "admin").first()
+        if not admin:
+            admin = Usuario(
+                id="admin-001",
+                username="admin",
+                tipo=TipoUsuario.ADMIN,
+                ativo=True
+            )
+            admin.hash_senha("admin123")
+            db.add(admin)
 ```
 
-**Modelos ORM:**
+**Modelos ORM com relacionamentos e métodos:**
 
 ```python
 # backend/app/models/db_models.py
-from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import relationship
-from .database import Base
+from app.infra.database import Base
+from enum import Enum
+import json
+import hashlib
+
+class TipoUsuario(str, Enum):
+    ADMIN = "admin"
+    MEDICO = "medico"
+    PACIENTE = "paciente"
+
+class StatusConsulta(str, Enum):
+    AGENDADA = "agendada"
+    REALIZADA = "realizada"
+    CANCELADA = "cancelada"
+    FALTOU = "faltou"
+
+class Usuario(Base):
+    __tablename__ = "usuarios"
+    
+    id = Column(String, primary_key=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    senha_hash = Column(String, nullable=False)
+    tipo = Column(SQLEnum(TipoUsuario), nullable=False)
+    ativo = Column(Boolean, default=True)
+    referencia_id = Column(String)  # ID do médico ou paciente vinculado
+    
+    def hash_senha(self, senha: str):
+        """Gera hash SHA-256 da senha"""
+        self.senha_hash = hashlib.sha256(senha.encode()).hexdigest()
+    
+    def verificar_senha(self, senha: str) -> bool:
+        """Verifica se a senha está correta"""
+        return self.senha_hash == hashlib.sha256(senha.encode()).hexdigest()
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "tipo": self.tipo.value,
+            "ativo": self.ativo,
+            "referencia_id": self.referencia_id
+        }
 
 class Paciente(Base):
     __tablename__ = "pacientes"
     
-    id = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True)
     nome = Column(String, nullable=False)
-    cpf = Column(String, unique=True, nullable=False)
-    email = Column(String, unique=True, nullable=False)
+    cpf = Column(String, unique=True, nullable=False, index=True)
+    data_nascimento = Column(String, nullable=False)
+    telefone = Column(String, nullable=False)
+    email = Column(String)
+    endereco = Column(Text)  # JSON: {"rua", "numero", "cidade", "estado", "cep"}
+    ativo = Column(Boolean, default=True)
     
     consultas = relationship("Consulta", back_populates="paciente")
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "cpf": self.cpf,
+            "data_nascimento": self.data_nascimento,
+            "telefone": self.telefone,
+            "email": self.email,
+            "endereco": json.loads(self.endereco) if self.endereco else {},
+            "ativo": self.ativo
+        }
 
 class Medico(Base):
     __tablename__ = "medicos"
     
-    id = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True)
     nome = Column(String, nullable=False)
-    crm = Column(String, unique=True, nullable=False)
+    crm = Column(String, unique=True, nullable=False, index=True)
     especialidade = Column(String, nullable=False)
+    telefone = Column(String, nullable=False)
+    email = Column(String)
+    horarios_atendimento = Column(Text)  # JSON: {"segunda": ["08:00-12:00"], ...}
+    ativo = Column(Boolean, default=True)
     
     consultas = relationship("Consulta", back_populates="medico")
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "crm": self.crm,
+            "especialidade": self.especialidade,
+            "telefone": self.telefone,
+            "email": self.email,
+            "horarios_atendimento": json.loads(self.horarios_atendimento) if self.horarios_atendimento else {},
+            "ativo": self.ativo
+        }
 
 class Consulta(Base):
     __tablename__ = "consultas"
     
-    id = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True)
     paciente_id = Column(String, ForeignKey("pacientes.id"), nullable=False)
     medico_id = Column(String, ForeignKey("medicos.id"), nullable=False)
-    data_hora = Column(String, nullable=False)
-    duracao_minutos = Column(Integer, nullable=False)
-    status = Column(String, nullable=False, default="agendada")
+    data_hora = Column(DateTime, nullable=False, index=True)
+    duracao_minutos = Column(Integer, default=30)
+    status = Column(SQLEnum(StatusConsulta), default=StatusConsulta.AGENDADA)
+    observacoes = Column(Text)
     
     paciente = relationship("Paciente", back_populates="consultas")
     medico = relationship("Medico", back_populates="consultas")
+    
+    def to_dict(self):
+        from datetime import timedelta
+        return {
+            "id": self.id,
+            "paciente_id": self.paciente_id,
+            "medico_id": self.medico_id,
+            "data_hora": self.data_hora.isoformat(),
+            "data_hora_fim": (self.data_hora + timedelta(minutes=self.duracao_minutos)).isoformat(),
+            "duracao_minutos": self.duracao_minutos,
+            "status": self.status.value,
+            "observacoes": self.observacoes
+        }
 ```
 
-**Operações de banco de dados com SQLAlchemy:**
+**Operações de banco de dados com SQLAlchemy e db.expunge():**
 
 ```python
 # backend/app/repositories/paciente_repository.py
-from sqlalchemy.orm import Session
-from ..models.db_models import Paciente
-from ..schemas.paciente_schema import PacienteCreate, PacienteUpdate
+from typing import List, Optional
+from app.models.db_models import Paciente
+from app.infra.database import get_db_session
 
 class PacienteRepository:
-    def __init__(self, db: Session):
-        self.db = db
+    """Repository para operações com Pacientes usando SQLAlchemy"""
     
-    def criar(self, paciente: PacienteCreate):
-        db_paciente = Paciente(**paciente.dict())
-        self.db.add(db_paciente)
-        self.db.commit()
-        self.db.refresh(db_paciente)
-        return db_paciente
+    async def create(self, paciente: Paciente) -> Paciente:
+        """Cria novo paciente"""
+        with get_db_session() as db:
+            db.add(paciente)
+            db.flush()
+            db.refresh(paciente)
+            db.expunge(paciente)  # Desacopla da sessão antes de retornar
+            return paciente
     
-    def buscar_por_id(self, paciente_id: str):
-        return self.db.query(Paciente).filter(Paciente.id == paciente_id).first()
+    async def find_by_id(self, paciente_id: str) -> Optional[Paciente]:
+        """Busca paciente por ID"""
+        with get_db_session() as db:
+            paciente = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+            if paciente:
+                db.expunge(paciente)  # Evita DetachedInstanceError
+            return paciente
     
-    def buscar_por_cpf(self, cpf: str):
-        return self.db.query(Paciente).filter(Paciente.cpf == cpf).first()
+    async def find_by_cpf(self, cpf: str) -> Optional[Paciente]:
+        """Busca paciente por CPF"""
+        with get_db_session() as db:
+            paciente = db.query(Paciente).filter(Paciente.cpf == cpf).first()
+            if paciente:
+                db.expunge(paciente)
+            return paciente
     
-    def atualizar(self, paciente_id: str, dados: PacienteUpdate):
-        self.db.query(Paciente).filter(Paciente.id == paciente_id).update(dados.dict())
-        self.db.commit()
+    async def find_all(self) -> List[Paciente]:
+        """Lista todos os pacientes"""
+        with get_db_session() as db:
+            pacientes = db.query(Paciente).all()
+            for p in pacientes:
+                db.expunge(p)  # Desacopla cada objeto
+            return pacientes
     
-    def deletar(self, paciente_id: str):
-        self.db.query(Paciente).filter(Paciente.id == paciente_id).delete()
-        self.db.commit()
+    async def update(self, paciente_id: str, paciente: Paciente) -> Paciente:
+        """Atualiza paciente"""
+        with get_db_session() as db:
+            db_paciente = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+            if db_paciente:
+                db_paciente.nome = paciente.nome
+                db_paciente.cpf = paciente.cpf
+                db_paciente.telefone = paciente.telefone
+                db_paciente.email = paciente.email
+                db_paciente.endereco = paciente.endereco
+                db_paciente.ativo = paciente.ativo
+                db.flush()
+                db.refresh(db_paciente)
+                db.expunge(db_paciente)
+                return db_paciente
+            return None
+    
+    async def delete(self, paciente_id: str) -> bool:
+        """Remove paciente"""
+        with get_db_session() as db:
+            db_paciente = db.query(Paciente).filter(Paciente.id == paciente_id).first()
+            if db_paciente:
+                db.delete(db_paciente)
+                return True
+            return False
 ```
 
+**Por que `db.expunge()` é necessário?**
+- ✅ Context manager fecha a sessão ao sair do bloco `with`
+- ✅ Objetos SQLAlchemy ficam "attached" à sessão que os criou
+- ✅ Acessar atributos de objeto "detached" causa `DetachedInstanceError`
+- ✅ `db.expunge()` torna o objeto independente da sessão
+- ✅ Permite usar o objeto após a sessão fechar
+
 **Conceitos de SO aplicados:**
-- **File System Hierarchy**: Estrutura hierárquica de diretórios
-- **Path Resolution**: Resolução de caminhos relativos e absolutos
-- **File Descriptors**: Gerenciamento de handles/descriptors de arquivo
-- **Buffering**: Sistema de buffers do SO para I/O
-- **Page Cache**: Arquivos recentes ficam em cache na memória
-- **Write-behind Caching**: Escritas são cacheadas antes de ir para disco
-- **fsync/flush**: Força sincronização do cache com disco físico
-- **Atomic Operations**: Backup antes de sobrescrever (transação segura)
+- **File System Hierarchy**: Estrutura `backend/banco/database.db` organizada hierarquicamente
+- **Path Resolution**: Caminhos absolutos e relativos para localizar o banco
+- **File Descriptors**: SQLite gerencia handles de arquivo do banco
+- **File Locking**: SQLite usa locks para controle de concorrência (shared/exclusive)
+- **Buffering**: Page cache do SQLite otimiza I/O
+- **Page Cache**: Páginas frequentes do banco ficam em memória RAM
+- **Write-Ahead Logging (WAL)**: SQLite usa WAL mode para transações atômicas
+- **fsync/flush**: COMMIT força sincronização do journal com disco
+- **Atomic Operations**: Transações ACID garantidas pelo SQLite
+- **PRAGMA statements**: Configurações de performance e segurança do SQLite
+- **B-Tree Data Structure**: SQLite usa B-Tree para índices e tabelas
 
 ---
 
