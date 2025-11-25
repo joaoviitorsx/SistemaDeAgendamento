@@ -77,50 +77,46 @@ const Sidebar: React.FC = () => {
 
   return (
     <div className="w-64 bg-gradient-to-b from-neutral-900 via-neutral-800 to-neutral-900 text-white min-h-screen flex flex-col shadow-2xl">
-      {/* Logo */}
       <div className="p-6 border-b border-neutral-700 bg-gradient-to-br from-primary-600 to-primary-700">
-        <h1 className="text-xl font-heading font-bold text-white">
-          Sistema Médico
-        </h1>
-        <p className="text-sm text-primary-100 mt-1 font-medium">{user?.nome}</p>
+      <h1 className="text-xl font-heading font-bold text-white">
+        Sistema Médico
+      </h1>
+      <p className="text-sm text-primary-100 mt-1 font-medium">{user?.nome}</p>
       </div>
 
-      {/* Menu */}
       <nav className="flex-1 py-4 px-2">
-        {filteredItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`
-                flex items-center gap-3 px-4 py-3 mb-1 rounded-lg
-                transition-all duration-200 font-medium
-                ${
-                  isActive
-                    ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg scale-[1.02]'
-                    : 'text-neutral-300 hover:bg-neutral-700 hover:text-white hover:shadow-md'
-                }
-              `}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
+      {filteredItems.map((item) => {
+        const isActive = location.pathname === item.path;
+        return (
+        <Link
+          key={item.path}
+          to={item.path}
+          className={`
+          flex items-center gap-3 px-4 py-3 mb-1 rounded-lg
+          transition-all duration-200 font-medium
+          ${
+            isActive
+            ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg scale-[1.02]'
+            : 'text-neutral-300 hover:bg-neutral-700 hover:text-white hover:shadow-md'
+          }
+          `}>
+          {item.icon}
+          <span>{item.label}</span>
+        </Link>
+        );
+      })}
       </nav>
 
-      {/* Logout */}
-      <div className="p-4 border-t border-neutral-700">
-        <button
-          onClick={logout}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-danger-600 to-danger-500 hover:from-danger-700 hover:to-danger-600 text-white rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-xl active:scale-[0.98]"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sair
-        </button>
+      <div className="p-4 border-t border-neutral-700 sticky bottom-0 bg-neutral-900 z-10">
+      <button
+        onClick={logout}
+        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-danger-600 to-danger-500 hover:from-danger-700 hover:to-danger-600 text-white rounded-lg transition-all duration-200 font-medium shadow-lg hover:shadow-xl active:scale-[0.98] cursor-pointer"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Sair
+      </button>
       </div>
     </div>
   );
